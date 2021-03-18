@@ -1,2 +1,1 @@
 https://github.com/cheese-drawer/lib-python-amqp-worker/releases/download/0.2.0/amqp_worker-0.2.0-py3-none-any.whl
-https://github.com/cheese-drawer/lib-python-db-wrapper/releases/download/0.1.4/db_wrapper-0.1.4-py3-none-any.whl
