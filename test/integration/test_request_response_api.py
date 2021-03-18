@@ -2,17 +2,23 @@
 # pylint: disable=missing-function-docstring
 
 import unittest
-from unittest import TestCase
-from uuid import uuid4
-from typing import Any, List, Dict
+# from uuid import uuid4
+# from typing import Any, List, Dict
+#
+# import psycopg2
+# from psycopg2 import sql
+# from psycopg2.extensions import register_adapter
+# from psycopg2.extras import Json
 
-import psycopg2
-from psycopg2 import sql
-from psycopg2.extensions import register_adapter
-from psycopg2.extras import Json
-
-from helpers.connection import connect, Connection
-from helpers.rpc_client import Client
+# pylint thinks `test. ...` is a standard import for some reason
+# pylint: disable=wrong-import-order
+from test.integration.helpers.connection import connect, Connection
+from test.integration.helpers.rpc_client import Client
+# use TimeLimitedTestCase instead of unittest.TestCase
+# it adds a time limit for a test (5 seconds by default), so
+# the test will fail for timing out instead of hanging forever
+# if you try to test a route that doesn't exist
+from test.integration.helpers.timeout import TimeLimitedTestCase
 
 
 connection: Connection
@@ -35,191 +41,19 @@ def setUpModule() -> None:
     client = Client(connection, channel)
 
 
+# You'll probably want to rename this to something that names the route
+# under test. For example, if the route under test is plaid.request_token,
+# maybe the test case class should be TestRoutePlaidRequestToken.
+class TestRouteName(TimeLimitedTestCase):
+    pass
+
+
 def tearDownModule() -> None:
     """Close connection."""
     # pylint: disable=global-statement
     # pylint: disable=invalid-name
     global connection
     connection.close()
-
-
-class TestRouteTest(TestCase):
-    """Tests for API endpoint `test`."""
-
-    def test_response_should_be_successful(self) -> None:
-        successful = client.call('test', 'message')['success']
-
-        self.assertTrue(successful)
-
-    def test_response_appends_that_took_forever_to_message(
-        self
-    ) -> None:
-        print('running test_response_appends_that_took_forever_to_message')
-        data = client.call('test', 'message')['data']
-
-        self.assertEqual(data, 'message that took forever')
-
-
-class TestRouteWillError(TestCase):
-    """Tests for API endpoint `will-error`."""
-    response: Dict[str, Any]
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.response = client.call('will-error', '')
-
-    def test_response_should_not_be_successful(self) -> None:
-        successful = self.response['success']
-
-        self.assertFalse(successful)
-
-    def test_response_should_include_error_information(self) -> None:
-        self.assertIn('error', self.response)
-
-    def test_error_data_includes_message(self) -> None:
-        message = client.call('will-error', 'message')['error']['message']
-
-        for phrase in ['Just an exception', 'message']:
-            # Using `self.subTest` as context allows for more elegance when
-            # making multiple assertions in the same test. Instead of stopping
-            # test execution if an assertion fails, it records the failure &
-            # continues to make the remaining assertions.
-            with self.subTest():
-                self.assertIn(phrase, message)
-
-    def test_error_data_includes_error_type(self) -> None:
-        errtype = self.response['error']['type']
-
-        self.assertEqual(errtype, 'Exception')
-
-
-class TestRouteDictionary(TestCase):
-    """Tests for API endpoint `dictionary`"""
-
-    def test_response_should_include_original_dicts_attributes(
-        self
-    ) -> None:
-        message = {
-            'dictionary': 'foo'
-        }
-        response = client.call('dictionary', message)
-
-        self.assertIn('dictionary', response['data'])
-
-    def test_response_should_include_new_bar_attribute_with_value_baz(
-        self
-    ) -> None:
-        message = {
-            'dictionary': 'foo'
-        }
-        response = client.call('dictionary', message)
-
-        self.assertEqual('baz', response['data']['bar'])
-
-
-class TestRouteDb(TestCase):
-    """Tests for API endpoint `db`"""
-
-    def test_response_should_be_list_of_table_names(self) -> None:
-        response = client.call('db')
-
-        with self.subTest():
-            self.assertIn('simple', response['data'])
-        with self.subTest():
-            self.assertIn('example_item', response['data'])
-
-    def test_response_unaltered_by_message_content(self) -> None:
-        response = client.call('db', 'this is ignored')
-
-        with self.subTest():
-            self.assertIn('simple', response['data'])
-        with self.subTest():
-            self.assertIn('example_item', response['data'])
-
-
-class TestRouteExampleItems(TestCase):
-    """Tests for API endpoint `db`"""
-    example_items: List[Any]
-
-    def setUp(self) -> None:
-        self.example_items: List[Any] = [{
-            '_id': uuid4(),
-            'string': 'match me',
-            'integer': 1,
-            'json': {},
-        }, {
-            '_id': uuid4(),
-            'string': 'match me',
-            'integer': 1,
-            'json': {},
-        }, {
-            '_id': uuid4(),
-            'string': "don't match me",
-            'integer': 1,
-            'json': {},
-        }]
-
-        def example_item_query(item: Any) -> psycopg2.sql.Composed:
-            base = sql.SQL(
-                'INSERT INTO example_item (_id, string, integer, json) '
-                'VALUES ({_id}, {string}, {integer}, {json});')
-            query = base.format(
-                _id=sql.Literal(str(item['_id'])),
-                string=sql.Literal(item['string']),
-                integer=sql.Literal(item['integer']),
-                json=sql.Literal(item['json']))
-
-            return query
-
-        # tell psycopg2 to adapt all dictionaries to json instead of
-        # the default hstore
-        register_adapter(dict, Json)
-
-        conn = psycopg2.connect('postgres://test:pass@localhost/dev')
-
-        # set db State to test against here
-        try:
-            with conn:
-                with conn.cursor() as cur:
-                    # start by making sure it is empty
-                    cur.execute('DELETE FROM example_item')
-                    # cur.execute('DELETE * FROM simple')
-                    # then insert test records
-                    for item in self.example_items:
-                        cur.execute(example_item_query(item))
-
-        finally:
-            conn.close()
-
-    def test_response_should_be_include_all_records_with_matching_string_value(
-        self
-    ) -> None:
-        def id_to_str(item: Any) -> str:
-            return str(item['_id'])
-
-        response = client.call('example-items', 'match me')
-        ids = [item['_id'] for item in response['data']]
-
-        with self.subTest():
-            self.assertIn(id_to_str(self.example_items[0]), ids)
-        with self.subTest():
-            self.assertIn(id_to_str(self.example_items[1]), ids)
-        with self.subTest():
-            self.assertNotIn(id_to_str(self.example_items[2]), ids)
-
-    def test_response_should_be_empty_if_no_matching_records_are_found(
-        self
-    ) -> None:
-        response = client.call('example-items', 'match nothing')
-
-        self.assertEqual(len(response['data']), 0)
-
-    def test_response_should_be_error_if_no_query_string_is_given(
-        self
-    ) -> None:
-        response = client.call('example-items')
-
-        self.assertFalse(response['success'])
 
 
 if __name__ == '__main__':

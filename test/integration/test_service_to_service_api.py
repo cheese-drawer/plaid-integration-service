@@ -2,10 +2,16 @@
 # pylint: disable=missing-function-docstring
 
 import unittest
-from unittest import TestCase
 
-from helpers.connection import connect, Connection
-from helpers.queue_client import Client
+# pylint thinks `test. ...` is a standard import for some reason
+# pylint: disable=wrong-import-order
+from test.integration.helpers.connection import connect, Connection
+from test.integration.helpers.queue_client import Client
+# use TimeLimitedTestCase instead of unittest.TestCase
+# it adds a time limit for a test (5 seconds by default), so
+# the test will fail for timing out instead of hanging forever
+# if you try to test a route that doesn't exist
+from test.integration.helpers.timeout import TimeLimitedTestCase
 
 
 connection: Connection
@@ -36,27 +42,11 @@ def tearDownModule() -> None:
     connection.close()
 
 
-class TestRouteQueueTest(TestCase):
-    """Tests for API endpoint `queue-test`."""
-
-    def test_nothing_is_returned(self) -> None:
-        """
-        Nothing is returned.
-
-        This example is a pretty useless test, instead it should probably
-        eventually be paired with a Request via the R&R API to check if the
-        side effects from pushing a message on the StS API had the desired
-        side effect on the service.
-
-        Such a test would do something like the following:
-
-        1st: Setup initial state
-        2nd: Push message via StS API
-        3rd: Make R&R again, assert Response changed as expected
-        """
-        result = client.publish('queue-test', {'a': 1})  # type: ignore
-
-        self.assertIsNone(result)
+# You'll probably want to rename this to something that names the route
+# under test. For example, if the route under test is plaid.request_token,
+# maybe the test case class should be TestRoutePlaidRequestToken.
+class TestRouteName(TimeLimitedTestCase):
+    pass
 
 
 if __name__ == '__main__':
